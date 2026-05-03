@@ -12,10 +12,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request payload." }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || 
+                   process.env.NEXT_PUBLIC_GEMINI_KEY || 
+                   process.env.GOOGLE_API_KEY || 
+                   process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
+
     if (!apiKey) {
+      console.error("AI Advisor Error: No API key found in environment variables.");
       return NextResponse.json(
-        { error: "Missing GEMINI_API_KEY (or NEXT_PUBLIC_GEMINI_KEY) in environment." },
+        { error: "Missing Gemini API Key. Please configure GEMINI_API_KEY or GOOGLE_API_KEY." },
         { status: 500 }
       );
     }
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
       } else {
         // Add new message
         sanitizedContents.push({
-          role: message.role,
+          role: message.role === "assistant" ? "model" : message.role,
           parts: [...message.parts]
         });
       }
@@ -54,7 +59,9 @@ export async function POST(req: Request) {
     );
 
     const data = await response.json();
+    
     if (!response.ok) {
+      console.error("Gemini API Error:", data);
       return NextResponse.json(
         { error: data?.error?.message || "Gemini request failed." },
         { status: response.status }
@@ -62,7 +69,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(data);
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON request body." }, { status: 400 });
+  } catch (error: any) {
+    console.error("AI Advisor Route Error:", error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
