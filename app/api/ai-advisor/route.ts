@@ -39,26 +39,29 @@ export async function POST(req: Request) {
 
     // Attempt Gemini First
     if (geminiKey) {
-      try {
-        const response = await fetch(
-          `${API_BASE}/models/${MODEL}:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: sanitizedContents,
-              generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-            }),
-          }
-        );
+      const geminiModels = ["gemini-1.5-flash-latest", "gemini-pro", "gemini-1.5-flash"];
+      for (const model of geminiModels) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: sanitizedContents,
+                generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+              }),
+            }
+          );
 
-        const data = await response.json();
-        if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return NextResponse.json(data);
+          const data = await response.json();
+          if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            return NextResponse.json(data);
+          }
+          console.error(`Gemini model ${model} failed...`, data?.error || "Empty response");
+        } catch (err) {
+          console.error(`Gemini fetch error for ${model}...`, err);
         }
-        console.error("Gemini failed or returned empty, trying fallback...", data?.error || "Empty response");
-      } catch (err) {
-        console.error("Gemini fetch error, trying fallback...", err);
       }
     }
 
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
         }));
 
         const completion = await openai.chat.completions.create({
-          model: "gpt-4-turbo-preview",
+          model: "gpt-4o",
           messages,
           temperature: 0.7,
           max_tokens: 2048,
