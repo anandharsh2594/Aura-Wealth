@@ -181,6 +181,30 @@ function getEligibilityBand(tier: string): EligibilityBand {
   }
 }
 
+function parseSpendInput(s: string): number {
+  const n = parseFloat(String(s).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function createEmptyProfile() {
+  return {
+    income: "",
+    creditScore: "",
+    categories: {
+      dining: "",
+      travel: "",
+      fuel: "",
+      luxury: "",
+      entertainment: "",
+      groceries: "",
+      onlineShopping: "",
+      utilityBills: "",
+      other: "",
+    },
+    isMonthly: true,
+  };
+}
+
 export default function Home() {
   const { mergedCards } = useCardCatalog();
   const [step, setStep] = useState(1);
@@ -188,22 +212,7 @@ export default function Home() {
   const [explanation, setExplanation] = useState("");
   const [explaining, setExplaining] = useState(false);
   const [tierFilter, setTierFilter] = useState("All");
-  const [profile, setProfile] = useState({
-    income: 1200000,
-    creditScore: 780,
-    categories: {
-      dining: 0,
-      travel: 0,
-      fuel: 0,
-      luxury: 0,
-      entertainment: 0,
-      groceries: 0,
-      onlineShopping: 0,
-      utilityBills: 0,
-      other: 0,
-    },
-    isMonthly: true,
-  });
+  const [profile, setProfile] = useState(createEmptyProfile);
 
   const [result, setResult] = useState<any>(null);
   const filteredRecommendedCards = useMemo(() => {
@@ -213,6 +222,19 @@ export default function Home() {
   }, [result, tierFilter]);
 
   const handleBeginAnalysis = () => {
+    const inc = parseSpendInput(profile.income);
+    const cs = parseInt(profile.creditScore.trim(), 10);
+    if (
+      !profile.income.trim() ||
+      !profile.creditScore.trim() ||
+      inc <= 0 ||
+      !Number.isFinite(cs) ||
+      cs < 300 ||
+      cs > 900
+    ) {
+      alert("Please enter a valid annual income and a credit score between 300 and 900.");
+      return;
+    }
     setStep(2);
   };
 
@@ -221,17 +243,34 @@ export default function Home() {
     setLoading(true);
     
     try {
+      const c = profile.categories;
+      const dining = parseSpendInput(c.dining);
+      const travel = parseSpendInput(c.travel);
+      const fuel = parseSpendInput(c.fuel);
+      const luxury = parseSpendInput(c.luxury);
+      const entertainment = parseSpendInput(c.entertainment);
+      const groceries = parseSpendInput(c.groceries);
+      const onlineShopping = parseSpendInput(c.onlineShopping);
+      const utilityBills = parseSpendInput(c.utilityBills);
+      const other = parseSpendInput(c.other);
+      const categoryNums = [dining, travel, fuel, luxury, entertainment, groceries, onlineShopping, utilityBills, other];
+      if (categoryNums.every((n) => n <= 0)) {
+        alert("Enter a positive amount in at least one spending category.");
+        setLoading(false);
+        return;
+      }
+
       const data = calculatePortfolioOptimization(
         {
-          dining: profile.categories.dining,
-          travel: profile.categories.travel,
-          fuel: profile.categories.fuel,
-          luxury: profile.categories.luxury,
-          entertainment: profile.categories.entertainment,
-          groceries: profile.categories.groceries,
-          onlineShopping: profile.categories.onlineShopping,
-          utilityBills: profile.categories.utilityBills,
-          other: profile.categories.other,
+          dining,
+          travel,
+          fuel,
+          luxury,
+          entertainment,
+          groceries,
+          onlineShopping,
+          utilityBills,
+          other,
         },
         profile.isMonthly,
         mergedCards
@@ -255,19 +294,29 @@ export default function Home() {
       // Backend expects categories: { dining, travel, fuel, groceries, onlineShopping, utilityBills, jewelry, other }
       // Frontend state uses: { dining, travel, fuel, luxury, entertainment, groceries, onlineShopping, utilityBills, other }
       // Map fields explicitly so the AI receives the correct spending breakdown.
+      const cat = profile.categories;
+      const dining = parseSpendInput(cat.dining);
+      const travel = parseSpendInput(cat.travel);
+      const fuel = parseSpendInput(cat.fuel);
+      const luxury = parseSpendInput(cat.luxury);
+      const entertainment = parseSpendInput(cat.entertainment);
+      const groceries = parseSpendInput(cat.groceries);
+      const onlineShopping = parseSpendInput(cat.onlineShopping);
+      const utilityBills = parseSpendInput(cat.utilityBills);
+      const otherCat = parseSpendInput(cat.other);
       const backendProfile = {
-        income: profile.income,
-        creditScore: profile.creditScore,
+        income: parseSpendInput(profile.income),
+        creditScore: parseInt(profile.creditScore.trim(), 10) || 0,
         isMonthly: profile.isMonthly,
         categories: {
-          dining: profile.categories.dining,
-          travel: profile.categories.travel,
-          fuel: profile.categories.fuel,
-          groceries: profile.categories.groceries,
-          onlineShopping: profile.categories.onlineShopping,
-          utilityBills: profile.categories.utilityBills,
-          jewelry: profile.categories.luxury,
-          other: profile.categories.entertainment + profile.categories.other,
+          dining,
+          travel,
+          fuel,
+          groceries,
+          onlineShopping,
+          utilityBills,
+          jewelry: luxury,
+          other: entertainment + otherCat,
         },
       };
 
@@ -360,10 +409,10 @@ export default function Home() {
     doc.text("Current Spending DNA", 20, currentY);
 
     const expensesData = Object.entries(profile.categories)
-      .filter(([_, value]) => value > 0)
+      .filter(([_, value]) => parseSpendInput(String(value)) > 0)
       .map(([key, value]) => [
         key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
-        `INR ${Number(value).toLocaleString()}`
+        `INR ${parseSpendInput(String(value)).toLocaleString()}`
       ]);
 
     autoTable(doc, {
@@ -498,7 +547,7 @@ export default function Home() {
   const updateCategory = (cat: string, val: string) => {
     setProfile(p => ({
       ...p,
-      categories: { ...p.categories, [cat]: parseFloat(val) || 0 }
+      categories: { ...p.categories, [cat]: val },
     }));
   };
 
@@ -571,7 +620,7 @@ export default function Home() {
                         placeholder="1,200,000"
                         type="number"
                         value={profile.income}
-                        onChange={(e) => setProfile({...profile, income: parseFloat(e.target.value) || 0})}
+                        onChange={(e) => setProfile({ ...profile, income: e.target.value })}
                       />
                     </div>
                   </div>
@@ -583,7 +632,7 @@ export default function Home() {
                         placeholder="780"
                         type="number"
                         value={profile.creditScore}
-                        onChange={(e) => setProfile({...profile, creditScore: parseInt(e.target.value) || 0})}
+                        onChange={(e) => setProfile({ ...profile, creditScore: e.target.value })}
                       />
                     </div>
                   </div>
@@ -908,8 +957,12 @@ export default function Home() {
                 <div className="grid grid-cols-1 gap-8">
                   {filteredRecommendedCards.map((rec: any, idx: number) => {
                     const eligibilityBand = getEligibilityBand(rec.card.tier);
-                    const isEligibleByScore = profile.creditScore >= eligibilityBand.minCreditScore;
-                    const isEligibleByIncome = profile.income >= eligibilityBand.minIncome;
+                    const parsedScore = parseInt(profile.creditScore.trim(), 10);
+                    const parsedIncome = parseSpendInput(profile.income);
+                    const isEligibleByScore =
+                      Number.isFinite(parsedScore) && parsedScore >= eligibilityBand.minCreditScore;
+                    const isEligibleByIncome =
+                      Number.isFinite(parsedIncome) && parsedIncome >= eligibilityBand.minIncome;
                     const isLikelyEligible = isEligibleByScore && isEligibleByIncome;
 
                     return (
@@ -1008,7 +1061,13 @@ export default function Home() {
                <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  setProfile(createEmptyProfile());
+                  setResult(null);
+                  setExplanation("");
+                  setTierFilter("All");
+                  setStep(1);
+                }}
                 className="text-slate-500 hover:text-primary font-label-sm uppercase tracking-[0.3em] transition-all duration-500 flex items-center gap-4 bg-white/5 px-10 py-4 rounded-full border border-white/5 hover:border-primary/20"
               >
                 <MaterialIcon name="refresh" className="text-sm" />
