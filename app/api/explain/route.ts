@@ -1,13 +1,42 @@
-import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+
+function localFallbackExplanation(profile: any, result: any): string {
+  const cats = profile?.categories || {};
+  const top = Object.entries(cats)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([k, v]) => `${k} (INR ${v})`)
+    .join(", ");
+  const cards =
+    (result?.recommendedCards || [])
+      .slice(0, 5)
+      .map(
+        (c: any) =>
+          `**${c?.card?.name || "Card"}** (${c?.card?.issuer || ""}) — best for: ${(c?.categoryMapping || []).join(", ")}`
+      )
+      .join("\n\n") || "Use the recommended portfolio to align rewards with your spend mix.";
+  return (
+    `**Wealth optimization summary**\n\n` +
+    `Your strongest spend signals: ${top || "—"}.\n\n` +
+    `**Recommended lineup**\n\n${cards}\n\n` +
+    `**Net annual savings (estimated):** INR ${result?.netSavings ?? "—"}\n\n` +
+    `Add **OPENAI_API_KEY** in Vercel environment variables to enable full AI narrative for this section.`
+  );
+}
 
 export async function POST(req: Request) {
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
   try {
     const { profile, result } = await req.json();
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) {
+      return NextResponse.json({
+        explanation: localFallbackExplanation(profile, result),
+      });
+    }
+
+    const openai = new OpenAI({ apiKey });
 
     const prompt = `
       You are a luxury fintech advisor specializing in the Indian credit card market.
@@ -32,10 +61,10 @@ export async function POST(req: Request) {
     `;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: "gpt-4-turbo-preview",
       messages: [
-        { role: 'system', content: 'You are a premium financial optimization engine.' },
-        { role: 'user', content: prompt }
+        { role: "system", content: "You are a premium financial optimization engine." },
+        { role: "user", content: prompt },
       ],
       temperature: 0.7,
       max_tokens: 500,
@@ -43,7 +72,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ explanation: response.choices[0].message.content });
   } catch (error) {
-    console.error('AI Explanation Error:', error);
-    return NextResponse.json({ error: 'Failed to generate explanation' }, { status: 500 });
+    console.error("AI Explanation Error:", error);
+    return NextResponse.json({ error: "Failed to generate explanation" }, { status: 500 });
   }
 }

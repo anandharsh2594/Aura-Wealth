@@ -271,7 +271,7 @@ export default function Home() {
         },
       };
 
-      const response = await fetch("http://localhost:8000/explain", {
+      const response = await fetch("/api/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ result: res, profile: backendProfile }),
