@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
-
-const MODEL = "gemini-1.5-flash";
-const API_BASE = "https://generativelanguage.googleapis.com/v1";
 
 export async function POST(req: Request) {
   try {
@@ -19,60 +17,52 @@ export async function POST(req: Request) {
                       process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 
     const openaiKey = process.env.OPENAI_API_KEY;
+    const errors: string[] = [];
 
-    // Sanitize contents to ensure strict alternation of user/model roles for Gemini
+    // Sanitize contents for Gemini
     const sanitizedContents: any[] = [];
     for (const message of contents) {
       const role = message.role === "assistant" || message.role === "model" ? "model" : "user";
       const text = message.parts.map((p: any) => p.text).join("");
-
+      
       if (sanitizedContents.length > 0 && sanitizedContents[sanitizedContents.length - 1].role === role) {
-        // Combine with previous message
         sanitizedContents[sanitizedContents.length - 1].parts[0].text += `\n\n${text}`;
       } else {
-        // Add new message
-        sanitizedContents.push({
-          role: role,
-          parts: [{ text }]
-        });
+        sanitizedContents.push({ role, parts: [{ text }] });
       }
     }
 
-    const errors: any[] = [];
-
-    // Attempt Gemini First
+    // 1. Try Gemini with official SDK
     if (geminiKey) {
-      const geminiModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b", "gemini-pro"];
-      for (const model of geminiModels) {
-        try {
-          const response = await fetch(
-            `${API_BASE}/models/${model}:generateContent?key=${geminiKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: sanitizedContents,
-                generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-              }),
-            }
-          );
+      try {
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        // Use flash 1.5
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        // Convert sanitizedContents to SDK format
+        // history: [{ role: 'user', parts: [{ text: '...' }] }, ...]
+        const history = sanitizedContents.slice(0, -1);
+        const lastMessage = sanitizedContents[sanitizedContents.length - 1].parts[0].text;
+        
+        const chat = model.startChat({ history });
+        const result = await chat.sendMessage(lastMessage);
+        const response = await result.response;
+        const text = response.text();
 
-          const data = await response.json();
-          if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return NextResponse.json(data);
-          }
-          errors.push(`Gemini (${model}): ${data?.error?.message || "Unknown error"}`);
-          console.error(`Gemini model ${model} failed...`, data?.error || "Empty response");
-        } catch (err: any) {
-          errors.push(`Gemini fetch error: ${err.message}`);
-          console.error(`Gemini fetch error for ${model}...`, err);
+        if (text) {
+          return NextResponse.json({
+            candidates: [{ content: { parts: [{ text }] } }]
+          });
         }
+      } catch (err: any) {
+        errors.push(`Gemini Error: ${err.message}`);
+        console.error("Gemini SDK failed:", err);
       }
     } else {
-      errors.push("Gemini API key not configured.");
+      errors.push("Gemini key missing.");
     }
 
-    // Fallback to OpenAI if Gemini fails or is not configured
+    // 2. Fallback to OpenAI
     if (openaiKey) {
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
@@ -90,24 +80,20 @@ export async function POST(req: Request) {
 
         const text = completion.choices[0].message.content;
         if (text) {
-          // Mock the Gemini structure for the frontend
           return NextResponse.json({
-            candidates: [{
-              content: { parts: [{ text }] }
-            }]
+            candidates: [{ content: { parts: [{ text }] } }]
           });
         }
       } catch (err: any) {
-        errors.push(`OpenAI fallback failed: ${err.message}`);
-        console.error("OpenAI fallback failed...", err);
+        errors.push(`OpenAI Error: ${err.message}`);
+        console.error("OpenAI failed:", err);
       }
     } else {
-      errors.push("OpenAI API key not configured.");
+      errors.push("OpenAI key missing.");
     }
 
-    // If we reach here, all services failed
     return NextResponse.json(
-      { error: `AI Failed. Reasons: ${errors.join(" | ")}` },
+      { error: `AI Failed. ${errors.join(" | ")}` },
       { status: 503 }
     );
 
