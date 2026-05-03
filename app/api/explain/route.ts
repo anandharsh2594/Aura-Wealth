@@ -37,8 +37,7 @@ function buildLocalFallbackExplanation(profile: any, result: any): string {
     `**How to Improve Further:**\n` +
     `1) Validate that your real-world spending categories match the recorded mix.\n` +
     `2) If any fee-bearing card is underutilized, shift that spend to higher-return categories.\n` +
-    `3) Re-run the audit after 30–45 days of statement history to recalibrate.\n\n` +
-    `*Note: Add GEMINI_API_KEY or OPENAI_API_KEY to your environment for a full AI-generated narrative.*`
+    `3) Re-run the audit after 30–45 days of statement history to recalibrate.`
   );
 }
 
