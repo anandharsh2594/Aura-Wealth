@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const MODEL = "gemini-1.5-flash";
-const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+const API_BASE = "https://generativelanguage.googleapis.com/v1";
 
 export async function POST(req: Request) {
   try {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
 
     // Attempt Gemini First
     if (geminiKey) {
-      const geminiModels = ["gemini-1.5-flash", "gemini-pro"];
+      const geminiModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b", "gemini-pro"];
       for (const model of geminiModels) {
         try {
           const response = await fetch(
