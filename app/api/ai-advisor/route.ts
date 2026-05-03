@@ -24,22 +24,25 @@ export async function POST(req: Request) {
     const sanitizedContents: any[] = [];
     for (const message of contents) {
       const role = message.role === "assistant" || message.role === "model" ? "model" : "user";
+      const text = message.parts.map((p: any) => p.text).join("");
+
       if (sanitizedContents.length > 0 && sanitizedContents[sanitizedContents.length - 1].role === role) {
         // Combine with previous message
-        sanitizedContents[sanitizedContents.length - 1].parts.push({ text: "\n\n" });
-        sanitizedContents[sanitizedContents.length - 1].parts.push(...message.parts);
+        sanitizedContents[sanitizedContents.length - 1].parts[0].text += `\n\n${text}`;
       } else {
         // Add new message
         sanitizedContents.push({
           role: role,
-          parts: [...message.parts]
+          parts: [{ text }]
         });
       }
     }
 
+    const errors: any[] = [];
+
     // Attempt Gemini First
     if (geminiKey) {
-      const geminiModels = ["gemini-1.5-flash-latest", "gemini-pro", "gemini-1.5-flash"];
+      const geminiModels = ["gemini-1.5-flash", "gemini-pro"];
       for (const model of geminiModels) {
         try {
           const response = await fetch(
@@ -58,11 +61,15 @@ export async function POST(req: Request) {
           if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
             return NextResponse.json(data);
           }
+          errors.push(`Gemini (${model}): ${data?.error?.message || "Unknown error"}`);
           console.error(`Gemini model ${model} failed...`, data?.error || "Empty response");
-        } catch (err) {
+        } catch (err: any) {
+          errors.push(`Gemini fetch error: ${err.message}`);
           console.error(`Gemini fetch error for ${model}...`, err);
         }
       }
+    } else {
+      errors.push("Gemini API key not configured.");
     }
 
     // Fallback to OpenAI if Gemini fails or is not configured
@@ -90,13 +97,17 @@ export async function POST(req: Request) {
             }]
           });
         }
-      } catch (err) {
+      } catch (err: any) {
+        errors.push(`OpenAI fallback failed: ${err.message}`);
         console.error("OpenAI fallback failed...", err);
       }
+    } else {
+      errors.push("OpenAI API key not configured.");
     }
 
+    // If we reach here, all services failed
     return NextResponse.json(
-      { error: "AI service unavailable. Please check API keys in .env.local." },
+      { error: `AI Failed. Reasons: ${errors.join(" | ")}` },
       { status: 503 }
     );
 

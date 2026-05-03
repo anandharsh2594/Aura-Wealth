@@ -158,12 +158,20 @@ export function useCardAdvisor() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Error:", error);
+      
+      let errorMessage = "Couldn't reach the AI advisor right now. Please try again in a moment.";
+      if (error?.message && error.message.includes("AI Failed")) {
+        errorMessage = `API Configuration Issue:\n${error.message}`;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: "error",
-        content: "Couldn't reach the AI advisor right now. Please try again in a moment.",
+        content: errorMessage,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
     } finally {
